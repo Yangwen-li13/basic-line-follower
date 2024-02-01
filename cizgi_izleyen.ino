@@ -73,7 +73,7 @@ int lastError = 0;
 
 void loop() {
   // Eğer izlenecek çizgi beyaz olacaksa alttaki fonksiyon değiştirilmelidir.
-  uint16_t position = qtr.readLineWhite(sensorValues); // Her bir sensör çizgideki ışık yansımalarına göre 0'dan 1000'e kadar değer verir,bu fonksiyonda 0 max, 1000 in yansımayı temsil eder.
+  uint16_t position = qtr.readLineBlack(sensorValues); // Her bir sensör çizgideki ışık yansımalarına göre 0'dan 1000'e kadar değer verir,bu fonksiyonda 0 max, 1000 in yansımayı temsil eder.
   // Robotun temel algoritması:
 
   int error = position - 2500;
