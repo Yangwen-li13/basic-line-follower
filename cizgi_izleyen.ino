@@ -1,90 +1,121 @@
 // Kodu yüklemeden önce indirmemiz gereken kütüphane
 #include <QTRSensors.h>
+#include <L298NX2.h>
 // Öncelikle motor sürücünün ve QTR Sensörünün pinlerini belirlememiz lazım
-#define MotorR1 11
-#define MotorR2 12 
-#define MotorRE 13
-#define MotorL1 10
-#define MotorL2 9
-#define MotorLE 8
-#define Sensor1 A0
-#define Sensor2 A1
-#define Sensor3 A2
-#define Sensor4 A3
-#define Sensor5 A4
-#define Sensor6 A5
+const unsigned int EN_A = 10;
+const unsigned int IN1_A = 9;
+const unsigned int IN2_A = 8;
+
+const unsigned int IN1_B = 7;
+const unsigned int IN2_B = 6;
+const unsigned int EN_B = 5;
+
+
+#define Sensor1 14
+#define Sensor2 15
+#define Sensor3 16
+#define Sensor4 17
+#define Sensor5 18
+#define Sensor6 19
+
+#define DEBUG 0 // Output almak istiyorsan 1 yapabilirsin
+
 // Kod üzerinde tanımladığım hız değerleri
-#define rightMaxSpeed 114
-#define leftMaxSpeed 115
-#define rightBaseSpeed 85 
-#define leftBaseSpeed 86 
-// Buradaki sayılar robotun temel algoritmasında kullandığım hareketini belirleyecek sayılar, tamamen deneme yanılma ile hesaplanabilir.
-float Kp = 0.038;
-float Kd = 0.76;
-// QTR kütüphanesindeki sensörler için gerekli kodlar
+#define rightMaxSpeed 170
+#define leftMaxSpeed 170
+#define rightBaseSpeed 75 
+#define leftBaseSpeed 76
+// Buradaki sayılar robotun temel algoritmasında kullandığım hareketini belirleyecek sayılar, tamamen deneme yanılma ile hesaplanabilir. (Note: Kp < Kd) 
+float Kp = 0.055;
+float Kd = 0.3;
+// QTR ve L298N kütüphanesi için gerekli kodlar
 QTRSensors qtr;
+#define TIMEOUT 2500
 const uint8_t SensorCount = 6;
 uint16_t sensorValues[SensorCount];
+
+L298NX2 motors(EN_A, IN1_A, IN2_A, EN_B, IN1_B, IN2_B);
 
 
 
 void setup() {
   // input ve outputları belirleyip kütüphanede sensörler için gerekili bazı fonksiyonları çağırmamız gerekiyor.
-  pinMode(MotorR1, OUTPUT);
-  pinMode(MotorR2, OUTPUT);
-  pinMode(MotorRE, OUTPUT);
-  pinMode(MotorL1, OUTPUT);
-  pinMode(MotorL2, OUTPUT);
-  pinMode(MotorLE, OUTPUT);
+
   pinMode(Sensor1, INPUT);
   pinMode(Sensor2, INPUT);
   pinMode(Sensor3, INPUT);
   pinMode(Sensor4, INPUT);
   pinMode(Sensor5, INPUT);
   pinMode(Sensor6, INPUT);
+
   pinMode(LED_BUILTIN, OUTPUT);
-  qtr.setTypeAnalog();
-  qtr.setSensorPins((const uint8_t[]){A0, A1, A2, A3, A4, A5}, SensorCount);
+  qtr.setTypeRC();
+  qtr.setSensorPins((const uint8_t[]){14, 15, 16, 17, 18, 19}, SensorCount);
+  // qtr.setTimeout(TIMEOUT);
   delay(500);
 
   digitalWrite(LED_BUILTIN, HIGH); // Arduino'nun ledini kalibrasyon modu sırasında açar. 
   
   int i;
   for (int i = 0; i < 100; i++) { // tercihe bağlı alandır ya robotunuzu hatta yürüterek kalibre edin veya bunu otomatik yapın.
-    if ( i  < 25 || i >= 75 ) { sag();}
-    else {sol();}
+
     qtr.calibrate();
     delay(20); }
-  bekle(); //motorları durdur
+  motors.stop(); //motorları durdur
   digitalWrite(LED_BUILTIN, LOW); // LEDin ışığını kalibrasyon bitişinde kapatır.
   delay(5000); // Ana döngüye girmeden önce botu konumlandırmak için 5 saniye bekleyin
-  }
+}
+
+
 
 int lastError = 0;
 
+
 void loop() {
   // Eğer izlenecek çizgi beyaz olacaksa alttaki fonksiyon değiştirilmelidir.
-  uint16_t position = qtr.readLineBlack(sensorValues); // Her bir sensör çizgideki ışık yansımalarına göre 0'dan 1000'e kadar değer verir,bu fonksiyonda 0 max, 1000 in yansımayı temsil eder.
-  delay(250);
+  uint16_t position = qtr.readLineWhite(sensorValues); // Her bir sensör çizgideki ışık yansımalarına göre 0'dan 1000'e kadar değer verir,bu fonksiyonda 0 max, 1000 in yansımayı temsil eder.
   // Robotun temel algoritması:
-  int error = position - 3000;
-  int motorSpeed = Kp * error + Kd * (error - lastError);
+
+  int error = position - 2500;
+  int motorSpeed = Kp * error + Kd * (error - lastError) ;
   lastError = error;
-  int rightMotorSpeed = rightBaseSpeed + motorSpeed;
-  int leftMotorSpeed = leftBaseSpeed - motorSpeed;
+
+  int rightMotorSpeed = rightBaseSpeed - motorSpeed;
+  int leftMotorSpeed = leftBaseSpeed + motorSpeed;
+
   if (rightMotorSpeed > rightMaxSpeed ) rightMotorSpeed = rightMaxSpeed;
   if (leftMotorSpeed > leftMaxSpeed ) leftMotorSpeed = leftMaxSpeed;
   if (rightMotorSpeed < 0) rightMotorSpeed = 0;
   if (leftMotorSpeed < 0) leftMotorSpeed = 0;
   
+  motors.forward();
+  motors.setSpeedA(rightMotorSpeed);
+  motors.setSpeedB(leftMotorSpeed);
 
-    digitalWrite(MotorR1, HIGH);
-    digitalWrite(MotorR2, LOW);
-    analogWrite(MotorRE, rightMotorSpeed);
 
-    digitalWrite(MotorL1, HIGH);
-    digitalWrite(MotorL2, LOW);
-    analogWrite(MotorLE, leftMotorSpeed);
+
+  if (DEBUG) { // if true, generate sensor dats via serial output
+    Serial.begin(9600);
+    for (int i = 0; i < SensorCount; i++)
+  {
+      Serial.print(qtr.calibrationOn.minimum[i]);
+      Serial.print(' ');
+  }
+      Serial.println();
+    for (int i = 0; i < SensorCount; i++)
+  {
+      Serial.print(qtr.calibrationOn.maximum[i]);
+      Serial.print(' ');
+  }
+  Serial.println();
+  Serial.println();
+  Serial.print(position);
+  Serial.println();
+  Serial.print(rightMotorSpeed);
+  Serial.print(' ');
+  Serial.print(leftMotorSpeed);
+  delay(500);
+  }
   
   /*
   char rc;
@@ -99,58 +130,3 @@ void loop() {
 
 }
 
-void geri(){
-  digitalWrite(MotorR1, LOW);
-  digitalWrite(MotorR2, HIGH);
-  digitalWrite(MotorRE, 255);
-
-  digitalWrite(MotorL1, LOW);
-  digitalWrite(MotorL2, HIGH);
-  digitalWrite(MotorLE, 255);
-
-}
-
-void ileri() {
-
-  digitalWrite(MotorR1, HIGH);
-  digitalWrite(MotorR2, LOW);
-  digitalWrite(MotorRE, 255);
-
-  digitalWrite(MotorL1, HIGH);
-  digitalWrite(MotorL2, LOW);
-  digitalWrite(MotorLE, 255);
-}
-
-void bekle() {
-    digitalWrite(MotorR1,LOW);
-    digitalWrite(MotorR2, LOW);
-   
-
-    digitalWrite(MotorL1, LOW);
-    digitalWrite(MotorL2, LOW);
-}
-
-
-void sol(){
-
-  digitalWrite(MotorR1, HIGH);
-  digitalWrite(MotorR2, LOW);
-  digitalWrite(MotorRE, rightBaseSpeed);
-
-  digitalWrite(MotorL1, LOW);
-  digitalWrite(MotorL2, HIGH);
-  digitalWrite(MotorLE, leftBaseSpeed);
-
-}
-
-void sag(){
-
-  digitalWrite(MotorR1, LOW);
-  digitalWrite(MotorR2, HIGH);
-  digitalWrite(MotorRE, rightBaseSpeed);
-
-  digitalWrite(MotorL1, HIGH);
-  digitalWrite(MotorL2, LOW);
-  digitalWrite(MotorLE, leftBaseSpeed);
-
-}
